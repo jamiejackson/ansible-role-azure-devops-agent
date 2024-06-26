@@ -19,12 +19,6 @@
     - "{{ az_devops_work_folder }}"
   become: true
 
-- name: Install dependencies
-  package:
-    name: "{{ az_devops_agent_dependencies }}"
-    state: present
-  become: true
-
 - name: Check if svc.sh exists
   stat:
     path: "{{ '/'.join((az_devops_agent_folder, 'svc.sh')) }}"
@@ -144,6 +138,12 @@
     resource_agent_cmd_args: "{{ resource_agent_cmd_args }} + ['--replace']"
   when:
     - az_devops_agent_replace_existing
+
+- name: Install dependencies
+  command: |
+    pwd
+    ./bin/installdependencies.sh
+  become: true
 
 - name: Configure agent as a build server
   command: "{{ (agent_cmd_args + build_agent_cmd_args) | join(' ') }}"
