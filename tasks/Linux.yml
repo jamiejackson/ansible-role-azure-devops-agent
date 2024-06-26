@@ -19,12 +19,6 @@
     - "{{ az_devops_work_folder }}"
   become: true
 
-- name: Install dependencies
-  package:
-    name: "{{ az_devops_agent_dependencies }}"
-    state: present
-  become: true
-
 - name: Check if svc.sh exists
   stat:
     path: "{{ '/'.join((az_devops_agent_folder, 'svc.sh')) }}"
@@ -50,6 +44,10 @@
   become: true
   changed_when: false
   check_mode: no
+
+  # helpful for when agent installation had failed in the middle
+- include_tasks: _task_install_dependencies.yml
+  when: bin_agent_listener.stat.exists
 
 - name: Check agent version
   command: ./bin/Agent.Listener --version
@@ -94,16 +92,18 @@
 
 - name: Add deployment group tags
   set_fact:
-    deployment_agent_cmd_args: "{{ deployment_agent_cmd_args }} +
-      ['--addDeploymentGroupTags', '--deploymentGroupTags \\'{{ az_devops_deployment_group_tags }}\\'']"
+    deployment_agent_cmd_args: "{{ deployment_agent_cmd_args +
+      ['--addDeploymentGroupTags', '--deploymentGroupTags', '\"' +
+      az_devops_deployment_group_tags +
+      '\"'] }}"
   when:
-    - az_devops_deployment_group_tags is defined
+    - az_devops_deployment_group_tags is defined and az_devops_deployment_group_tags is not none
 
 - name: Set proxy
   set_fact:
-    agent_cmd_args: "{{ agent_cmd_args }} + ['--proxyurl \\'{{ az_devops_proxy_url }}\\'', '--proxyusername \\'{{ az_devops_proxy_username }}\\'', '--proxypassword \\'{{ az_devops_proxy_password }}\\'']"
+    agent_cmd_args: "{{ agent_cmd_args + ['--proxyurl \\'{{ az_devops_proxy_url }}\\'', '--proxyusername \\'{{ az_devops_proxy_username }}\\'', '--proxypassword \\'{{ az_devops_proxy_password }}\\''] }}"
   when:
-    - az_devops_proxy_url is defined
+    - az_devops_proxy_url is defined and az_devops_proxy_url
 
 - name: Download and unarchive
   unarchive:
@@ -139,11 +139,22 @@
 
 - name: Add '--replace' configuration argument
   set_fact:
-    build_agent_cmd_args: "{{ build_agent_cmd_args }} + ['--replace']"
-    deployment_agent_cmd_args: "{{ build_agent_cmd_args }} + ['--replace']"
-    resource_agent_cmd_args: "{{ resource_agent_cmd_args }} + ['--replace']"
+    build_agent_cmd_args: "{{ build_agent_cmd_args + ['--replace'] }}"
+    deployment_agent_cmd_args: "{{ build_agent_cmd_args + ['--replace'] }}"
+    resource_agent_cmd_args: "{{ resource_agent_cmd_args + ['--replace'] }}"
   when:
     - az_devops_agent_replace_existing
+
+- name: Allow configuration to write logs
+  ansible.builtin.file:
+    path: "{{ az_devops_agent_folder }}_diag"
+    owner: "{{ az_devops_agent_user }}"
+    group: "root"
+    mode: 'g+w'
+    state: directory
+  become: true
+
+- include_tasks: _task_install_dependencies.yml
 
 - name: Configure agent as a build server
   command: "{{ (agent_cmd_args + build_agent_cmd_args) | join(' ') }}"
